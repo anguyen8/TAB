@@ -1,6 +1,6 @@
 # CAB
 
-Official implementation of paper Co-Attention Bottleneck: Explainable and Causal Attention Emerged from Transformers Trained to Detect Images Changes
+Official implementation of paper **An explainable and editable co-attention bottleneck for Vision Transformers-based image difference captioners**
 
 ## Requirements
 
