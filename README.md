@@ -9,8 +9,9 @@
         <a href="https://anhnguyen.me/research/">Anh Totti Nguyen</a><sup>1</sup>
     </p>
     <p>
-        <sup>*</sup>Equal contribution<br>
-        <sup>1</sup>Auburn University, <sup>2</sup>Google DeepMind, ML Collective <sup>3</sup>Adobe Research
+        <sup>1</sup>Auburn University, 
+        <sup>2</sup>Google DeepMind, ML Collective,
+        <sup>3</sup>Adobe Research
     </p>
 
     
