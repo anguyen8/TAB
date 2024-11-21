@@ -41,22 +41,6 @@ your_data_path
 |   |   |–– type_mapping.json
 ```
 
-
-## Pretrained Weight
-
-```sh
-cd ckpts
-mkdir pretrained
-```
-
-You can download the [Pretrained Weights](https://drive.google.com/drive/folders/1qOYVpZy57clJPF6AThsnO0Tfy4zq-gg1?usp=sharing). We use weights from [CLIP4IDC](https://github.com/sushizixin/CLIP4IDC) to initialize the vision encoder (backbone) in CAB.
-
-```
-ckpts
-|–– pretrained/
-|   |–– pytorch_model.bin.clevr
-```
-
 Download CLIP (ViT-B/32 and ViT-B/16) weight,
 ```sh
 wget -P ./modules https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt
