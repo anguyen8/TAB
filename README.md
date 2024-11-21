@@ -14,22 +14,8 @@
         <sup>3</sup>ML Collective,
         <sup>4</sup>Adobe Research
     </p>
-
-    
-<!-- [![Website](http://img.shields.io/badge/Website-4b44ce.svg)](https://vlmsareblind.github.io/)
-[![arXiv](https://img.shields.io/badge/arXiv-2407.06581-b31b1b.svg)](https://arxiv.org/abs/2407.06581)
-[![Hugging Face Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset-red)](https://huggingface.co/datasets/XAI/vlmsareblind) -->
     
 </div>
-
-<!-- This repository contains the code and data for the paper `Vision Language Models Are Blind`.
-
-    @article{vlms2024blind,
-      title={Vision language models are blind},
-      author={Rahmanzadehgervi, Pooyan and Bolton, Logan and Taesiri, Mohammad Reza and Nguyen, Anh Totti},
-      journal={arXiv preprint arXiv:2407.06581},
-      year={2024}
-    } -->
 
 
 This repository contains the official implementation of paper `TAB: Transformer Attention Bottlenecks enable User Intervention and
@@ -38,7 +24,7 @@ Debugging in Vision-Language Models`
 
 ## Abstract
 
-*Multi-head self-attention (MHSA) is a key component of Transformers \cite{vaswani2017attention}, a widely popular architecture in both language and vision. Multiple heads intuitively enable different parallel processes over the same input. Yet, they also obscure the causal contributions of each input patch to the output of a model. We propose a novel 1-head Transformer Attention Bottleneck (TAB) layer, inserted after the traditional MHSA architecture, to serve as an attention bottleneck for interpretability and intervention. Unlike standard self-attention, TAB constrains the total attention over all patches to $\in [0, 1]$. That is, when the total attention is 0, no visual information is propagated further into the network and the vision-language model (VLM) would default to a generic, image-independent response. To demonstrate the advantages of TAB, we train VLMs with TAB to perform image difference captioning. Over three datasets, our models perform similarly to baseline VLMs in captioning but the bottleneck is \textbf{superior in localizing} changes and in identifying when no changes occur. TAB is the \textbf{first architecture to enable users to intervene} and edit attention maps, often producing expected outputs by VLMs.*
+*Multi-head self-attention (MHSA) is a key component of Transformers, a widely popular architecture in both language and vision. Multiple heads intuitively enable different parallel processes over the same input. Yet, they also obscure the causal contributions of each input patch to the output of a model. We propose a novel 1-head Transformer Attention Bottleneck (TAB) layer, inserted after the traditional MHSA architecture, to serve as an attention bottleneck for interpretability and intervention. Unlike standard self-attention, TAB constrains the total attention over all patches to $\in [0, 1]$. That is, when the total attention is 0, no visual information is propagated further into the network and the vision-language model (VLM) would default to a generic, image-independent response. To demonstrate the advantages of TAB, we train VLMs with TAB to perform image difference captioning. Over three datasets, our models perform similarly to baseline VLMs in captioning but the bottleneck is \textbf{superior in localizing} changes and in identifying when no changes occur. TAB is the \textbf{first architecture to enable users to intervene} and edit attention maps, often producing expected outputs by VLMs.*
 
 
 
