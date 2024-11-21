@@ -10,7 +10,8 @@
     </p>
     <p>
         <sup>1</sup>Auburn University, 
-        <sup>2,3</sup>Google DeepMind, ML Collective,
+        <sup>2</sup>Google DeepMind,
+        <sup>3</sup>ML Collective,
         <sup>4</sup>Adobe Research
     </p>
 
