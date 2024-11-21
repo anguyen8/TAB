@@ -1,6 +1,7 @@
-# CAB
+# TAB
 
-Official implementation of paper **An explainable and editable co-attention bottleneck for Vision Transformers-based image difference captioners**
+Official implementation of paper **TAB: Transformer Attention Bottlenecks enable User Intervention and
+Debugging in Vision-Language Models**
 
 ## Requirements
 
