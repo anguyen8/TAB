@@ -31,13 +31,8 @@
     } -->
 
 
-
-
-
-# TAB
-
-Official implementation of paper **TAB: Transformer Attention Bottlenecks enable User Intervention and
-Debugging in Vision-Language Models**
+This repository contains the official implementation of paper `TAB: Transformer Attention Bottlenecks enable User Intervention and
+Debugging in Vision-Language Models`
 
 ## Requirements
 
