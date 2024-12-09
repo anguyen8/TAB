@@ -86,3 +86,7 @@ wget -P ./modules https://openaipublic.azureedge.net/clip/models/40d365715913c9d
 wget -P ./modules https://openaipublic.azureedge.net/clip/models/5806e77cd80f8b59890b7e101eabd078d9fb84e6937f9e85e4ecb61988df416f/ViT-B-16.pt
 ```
 
+
+## Training
+
+We provide the bash scripts needed to run the 2-stage training in the [scripts folder](https://github.com/anguyen8/TAB/tree/main/scripts).
