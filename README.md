@@ -33,7 +33,7 @@ Debugging in Vision-Language Models`
 
 ```sh
 conda env create -f environment.yml
-conda activate cab
+conda activate tab
 ```
 
 
