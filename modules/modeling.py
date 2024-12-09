@@ -6,24 +6,31 @@ import logging
 
 import torch
 from torch import nn
+from torch.nn import CrossEntropyLoss, BCELoss
 
-from modules.until_module import PreTrainedModel, AllGather
+from modules.until_module import PreTrainedModel, AllGather, CrossEn, GroupCEn
+from modules.module_cross import CrossModel, CrossConfig
+from modules.module_decoder import DecoderModel, DecoderConfig
+
 from modules.module_clip import CLIP, convert_weights
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 
 logger = logging.getLogger(__name__)
 allgather = AllGather.apply
 
-class CABPreTrainedModel(PreTrainedModel, nn.Module):
+class CLIP4IDCPreTrainedModel(PreTrainedModel, nn.Module):
     """ An abstract class to handle weights initialization and
         a simple interface for dowloading and loading pretrained models.
     """
-    def __init__(self, *inputs, **kwargs):
-        super(CABPreTrainedModel, self).__init__()
+    def __init__(self, cross_config, decoder_config, *inputs, **kwargs):
+        super(CLIP4IDCPreTrainedModel, self).__init__(cross_config, decoder_config)
+        self.cross_config = cross_config
+        self.decoder_config = decoder_config
         self.clip = None
+        self.cross = None
 
     @classmethod
-    def from_pretrained(cls, state_dict=None, cache_dir=None, type_vocab_size=2, *inputs, **kwargs):
+    def from_pretrained(cls, cross_model_name, decoder_model_name, state_dict=None, cache_dir=None, type_vocab_size=2, *inputs, **kwargs):
 
         task_config = None
         if "task_config" in kwargs.keys():
@@ -43,7 +50,10 @@ class CABPreTrainedModel(PreTrainedModel, nn.Module):
             if new_key not in state_dict:
                 state_dict[new_key] = val.clone()
 
-        model = cls(clip_state_dict, *inputs, **kwargs)
+        cross_config, _ = CrossConfig.get_config(cross_model_name, cache_dir, type_vocab_size, state_dict=None, task_config=task_config)
+        decoder_config, _ = DecoderConfig.get_config(decoder_model_name, cache_dir, type_vocab_size, state_dict=None, task_config=task_config)
+
+        model = cls(cross_config, decoder_config, clip_state_dict, *inputs, **kwargs)
 
         ## ===> Initialization trick [HARD CODE]
         if model.linear_patch == "3d":
@@ -99,11 +109,22 @@ def update_attr(target_name, target_config, target_attr_name, source_config, sou
 def check_attr(target_name, task_config):
     return hasattr(task_config, target_name) and task_config.__dict__[target_name]
 
-class CAB(CABPreTrainedModel):
-    def __init__(self, clip_state_dict, task_config):
-        super(CAB, self).__init__()
+class CLIP4IDC(CLIP4IDCPreTrainedModel):
+    def __init__(self, cross_config, decoder_config, clip_state_dict, task_config):
+        super(CLIP4IDC, self).__init__(cross_config, decoder_config)
         self.task_config = task_config
         self.ignore_video_index = -1
+
+        # assert self.task_config.max_words <= cross_config.max_position_embeddings
+
+        if task_config.task_type == "retrieval":
+            self._stage_one = True
+            self._stage_two = False
+        else:
+            self._stage_one = False
+            self._stage_two = True
+
+        show_log(task_config, "Stage-One:{}, Stage-Two:{}".format(self._stage_one, self._stage_two))
 
         # CLIP Encoders: From OpenAI: CLIP [https://github.com/openai/CLIP] ===>
         vit = "visual.proj" in clip_state_dict
@@ -168,47 +189,105 @@ class CAB(CABPreTrainedModel):
         convert_weights(self.clip)
         # <=== End of CLIP Encoders
 
-        self.linear_layer = nn.Linear(1024, 1)
-        self.activation = nn.Sigmoid()
-        self.BCEloss = nn.BCELoss()
-        self.CSloss = nn.CosineSimilarity(dim=1, eps=1e-6)
+        if self._stage_one is False and self._stage_two is True:
+            decoder_config = update_attr("decoder_config", decoder_config, "num_decoder_layers",
+                                         self.task_config, "decoder_num_hidden_layers")
+            self.decoder = DecoderModel(decoder_config, bert_word_embeddings_weight, bert_position_embeddings_weight)
+            self.decoder_loss_fct = CrossEntropyLoss(ignore_index=0)
+
+        self.loss_fct = CrossEn()
+        self.map_loss = nn.CosineSimilarity(dim=1, eps=1e-6)
 
         self.apply(self.init_weights)
 
-    def forward(self, bef_image, aft_image, target, image_mask=None):
-                    
+    def forward(self, input_ids, token_type_ids, attention_mask, bef_image, aft_image, left_gt_map, right_gt_map, image_mask=None,
+                input_caption_ids=None, decoder_mask=None, output_caption_ids=None):
+        input_ids = input_ids.view(-1, input_ids.shape[-1])
+        token_type_ids = token_type_ids.view(-1, token_type_ids.shape[-1])
+        attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
         image_mask = image_mask.view(-1, image_mask.shape[-1])
+
         image = torch.cat([bef_image, aft_image], 1)
         b, pair, channel, h, w = image.shape
         image = image.view(b * pair, channel, h, w)
 
-        visual_emb, visual_output = self.get_visual_output(image, image_mask, shaped=True, video_frame=pair)
+        if input_caption_ids is not None:
+            input_caption_ids = input_caption_ids.view(-1, input_caption_ids.shape[-1])
+            decoder_mask = decoder_mask.view(-1, decoder_mask.shape[-1])
+
+        sequence_emb, visual_emb, sequence_output, visual_output, left_heatmap, right_heatmap = self.get_sequence_visual_output(input_ids, token_type_ids, attention_mask,
+                                                                         image, image_mask, left_gt_map[:, 0, :].squeeze(), right_gt_map[:, 0, :].squeeze(), shaped=True, video_frame=pair)
 
         if self.training:
-            
+
             loss = 0.
-            decision, label = self.predict_similarity(visual_emb, target)
-            loss += self.BCEloss(decision.float(), label.float())
+            decoder_loss = 0.
+            loc_loss = 0.
+
+            
+
+            if self._stage_one is True and self._stage_two is False:
+                sim_matrix, *_tmp = self.get_similarity_logits(sequence_emb, visual_emb, attention_mask, image_mask, target,
+                                                        shaped=True)
+
+                sim_loss1 = self.loss_fct(sim_matrix)
+                sim_loss2 = self.loss_fct(sim_matrix.T)
+                sim_loss = (sim_loss1 + sim_loss2) / 2
+                loss += sim_loss
+
+            elif self._stage_one is False and self._stage_two is True:
+                image_mask = torch.ones(visual_output.shape[0], visual_output.shape[1], device=visual_output.device).long()
+
+                decoder_scores, res_tuples = self._get_decoder_score(visual_output, image_mask,
+                                                                     input_caption_ids, decoder_mask, shaped=True)
+
+                output_caption_ids = output_caption_ids.view(-1, output_caption_ids.shape[-1])
+                decoder_loss = self.decoder_loss_fct(decoder_scores.view(-1, self.decoder_config.vocab_size),
+                                                     output_caption_ids.view(-1))
+
                 
-            return loss
+               left_heatmap, right_heatmap, gt_map_left, gt_map_right = self.prepare_tensors(left_heatmap[:, 0, :].squeeze(), right_heatmap[:, 0, :].squeeze(), left_gt_map[:, 0, :].squeeze(), right_gt_map[:, 0, :].squeeze())
+                
+
+                loc_loss = (1.0 - self.map_loss(right_heatmap, gt_map_left).mean())
+                loc_loss += (1.0 - self.map_loss(left_heatmap, gt_map_right).mean())
+
+                loss += decoder_loss
+                loss += loc_loss
+
+            return loss, decoder_loss, loc_loss
         else:
             return None
 
-    def predict_similarity(self, visual_output, label):
-        visual_output = visual_output.contiguous()
+    def prepare_tensors(self, left_heatmap, right_heatmap, gt_map_left, gt_map_right):
+        left_heatmap = left_heatmap.contiguous()
+        right_heatmap = right_heatmap.contiguous()
+        gt_map_left = gt_map_left.contiguous()
+        gt_map_right = gt_map_right.contiguous()
         if self.training:
-            visual_output = allgather(visual_output, self.task_config)
-            label = allgather(label, self.task_config)
+            gt_map_left = allgather(gt_map_left, self.task_config)
+            gt_map_right = allgather(gt_map_right, self.task_config)
+            left_heatmap = allgather(left_heatmap, self.task_config)
+            right_heatmap = allgather(right_heatmap, self.task_config)
             torch.distributed.barrier()
-            
-        visual_output = visual_output.squeeze(1)
 
-        hidden = self.linear_layer(visual_output)
-        hidden = self.activation(hidden)
+        return left_heatmap, right_heatmap, gt_map_left, gt_map_right
 
-        return output.squeeze(1), label
+    def get_sequence_output(self, input_ids, token_type_ids, attention_mask, shaped=False):
+        if shaped is False:
+            input_ids = input_ids.view(-1, input_ids.shape[-1])
+            token_type_ids = token_type_ids.view(-1, token_type_ids.shape[-1])
+            attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
 
-    def get_visual_output(self, video, visual_mask, shaped=False, video_frame=-1):
+        bs_pair = input_ids.size(0)
+        sequence_hidden, sequence_output = self.clip.encode_text(input_ids, return_hidden=True)
+        sequence_hidden = sequence_hidden.float()
+        sequence_output = sequence_output.float()
+        sequence_hidden = sequence_hidden.view(bs_pair, -1, sequence_hidden.size(-1))
+
+        return sequence_hidden, sequence_output
+
+    def get_visual_output(self, video, visual_mask, left_gt_map, right_gt_map, shaped=False, video_frame=-1):
         if shaped is False:
             visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
             video = torch.as_tensor(video).float()
@@ -217,9 +296,126 @@ class CAB(CABPreTrainedModel):
             video_frame = pair
 
         bs_pair = visual_mask.size(0)
-        visual_hidden, visual_output = self.clip.encode_image(video, video_frame=video_frame, return_hidden=True)
+        visual_hidden, visual_output, left_map, right_map = self.clip.encode_image(video, left_gt_map, right_gt_map, video_frame=video_frame, return_hidden=True)
         visual_hidden = visual_hidden.float()
         visual_output = visual_output.float()
         visual_hidden = visual_hidden.view(bs_pair, -1, visual_hidden.size(-1))
 
-        return visual_hidden, visual_output
+        left_map = left_map.float()
+        right_map = right_map.float()
+
+        return visual_hidden, visual_output, left_map, right_map
+
+    def get_sequence_visual_output(self, input_ids, token_type_ids, attention_mask, video, visual_mask, left_gt_map, right_gt_map, shaped=False, video_frame=-1):
+        if shaped is False:
+            input_ids = input_ids.view(-1, input_ids.shape[-1])
+            token_type_ids = token_type_ids.view(-1, token_type_ids.shape[-1])
+            attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
+            visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
+
+            visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
+            video = torch.as_tensor(video).float()
+            b, pair, channel, h, w = video.shape
+            video = video.view(b * pair, channel, h, w)
+            video_frame = pair
+
+        sequence_output, sequence_hidden = self.get_sequence_output(input_ids, token_type_ids, attention_mask, shaped=True)
+        visual_output, visual_hidden, left_map, right_map = self.get_visual_output(video, visual_mask, left_gt_map, right_gt_map, shaped=True, video_frame=video_frame)
+
+        return sequence_output, visual_output, sequence_hidden, visual_hidden, left_map, right_map
+
+    def _get_decoder_score(self, visual_output, visual_mask, input_caption_ids, decoder_mask, shaped=False):
+
+        if shaped is False:
+            visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
+
+            input_caption_ids = input_caption_ids.view(-1, input_caption_ids.shape[-1])
+            decoder_mask = decoder_mask.view(-1, decoder_mask.shape[-1])
+
+        res_tuples = ()
+        decoder_scores = self.decoder(input_caption_ids, encoder_outs=visual_output, answer_mask=decoder_mask, encoder_mask=visual_mask)
+
+        return decoder_scores, res_tuples
+
+    def _get_cross_output(self, sequence_output, visual_output, attention_mask, video_mask):
+
+        concat_features = torch.cat((sequence_output, visual_output), dim=1)  # concatnate tokens and frames
+        concat_mask = torch.cat((attention_mask, video_mask), dim=1)
+        text_type_ = torch.zeros_like(attention_mask)
+        video_type_ = torch.ones_like(video_mask)
+        concat_type = torch.cat((text_type_, video_type_), dim=1)
+
+        cross_layers, pooled_output = self.cross(concat_features, concat_type, concat_mask, output_all_encoded_layers=True)
+        cross_output = cross_layers[-1]
+
+        return cross_output, pooled_output, concat_mask
+
+    def _mean_pooling_for_similarity_sequence(self, sequence_output, attention_mask):
+        attention_mask_un = attention_mask.to(dtype=torch.float).unsqueeze(-1)
+        attention_mask_un[:, 0, :] = 0.
+        sequence_output = sequence_output * attention_mask_un
+        text_out = torch.sum(sequence_output, dim=1) / torch.sum(attention_mask_un, dim=1, dtype=torch.float)
+        return text_out
+
+    def _mean_pooling_for_similarity_visual(self, visual_output, video_mask,):
+        video_mask_un = video_mask.to(dtype=torch.float).unsqueeze(-1)
+        visual_output = visual_output * video_mask_un
+        video_mask_un_sum = torch.sum(video_mask_un, dim=1, dtype=torch.float)
+        video_mask_un_sum[video_mask_un_sum == 0.] = 1.
+        video_out = torch.sum(visual_output, dim=1) / video_mask_un_sum
+        return video_out
+
+    def _mean_pooling_for_similarity(self, sequence_output, visual_output, attention_mask, video_mask,):
+        text_out = self._mean_pooling_for_similarity_sequence(sequence_output, attention_mask)
+        video_out = self._mean_pooling_for_similarity_visual(visual_output, video_mask)
+
+        return text_out, video_out
+
+    def _loose_similarity(self, sequence_output, visual_output, attention_mask, visual_mask, target):
+        sequence_output, visual_output = sequence_output.contiguous(), visual_output.contiguous()
+
+        if self.training:
+            visual_output = allgather(visual_output, self.task_config)
+            visual_mask = allgather(visual_mask, self.task_config)
+            sequence_output = allgather(sequence_output, self.task_config)
+            target = allgather(target, self.task_config)
+            torch.distributed.barrier()
+
+        visual_output = visual_output.squeeze(1)
+        visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True)
+
+        sequence_output = sequence_output.squeeze(1)
+        sequence_output = sequence_output / sequence_output.norm(dim=-1, keepdim=True)
+
+        logit_scale = self.clip.logit_scale.exp()
+        retrieve_logits = logit_scale * torch.matmul(sequence_output, visual_output.t())
+        return retrieve_logits, target
+
+    def get_similarity_logits(self, sequence_output, visual_output, attention_mask, visual_mask, target, shaped=False):
+        if shaped is False:
+            attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
+            visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
+
+        contrastive_direction = ()
+
+        retrieve_logits, target = self._loose_similarity(sequence_output, visual_output, attention_mask, visual_mask, target)
+
+        return retrieve_logits, contrastive_direction, target
+
+    def decoder_caption(self, visual_output, visual_mask, input_caption_ids, decoder_mask,
+                        shaped=False, get_logits=False):
+        if shaped is False:
+            visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
+
+            input_caption_ids = input_caption_ids.view(-1, input_caption_ids.shape[-1])
+            decoder_mask = decoder_mask.view(-1, decoder_mask.shape[-1])
+
+        decoder_scores, _ = self._get_decoder_score(visual_output, visual_mask,
+                                                    input_caption_ids, decoder_mask, shaped=True)
+
+        if get_logits:
+            return decoder_scores
+
+        _, decoder_scores_result = torch.max(decoder_scores, -1)
+
+        return decoder_scores_result
