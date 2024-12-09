@@ -68,7 +68,7 @@ your_data_path
 
 **For STD**
 
-The image pairs and captions are accessible via [this instruction] (https://github.com/harsh19/spot-the-diff/blob/master/data/get_images.txt) privided by [Learning to Describe Differences Between Pairs of Similar Images (EMNLP 2018)](https://github.com/harsh19/spot-the-diff).
+The image pairs and captions can be downloaded using the instructions [here](https://github.com/harsh19/spot-the-diff/blob/master/data/get_images.txt) privided by [Learning to Describe Differences Between Pairs of Similar Images (EMNLP 2018)](https://github.com/harsh19/spot-the-diff).
 
 You would get
 
