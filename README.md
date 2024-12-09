@@ -28,6 +28,11 @@ Debugging in Vision-Language Models`
 
 
 
+
+
+## Disclaimer
+
+
 ## Requirements
 
 ```sh
@@ -90,3 +95,12 @@ wget -P ./modules https://openaipublic.azureedge.net/clip/models/5806e77cd80f8b5
 ## Training
 
 We provide the bash scripts needed to run the 2-stage training in the [scripts folder](https://github.com/anguyen8/TAB/tree/main/scripts).
+
+
+
+
+
+
+## Acknowledgment
+
+This repository borrows a significant part of its implementation from [CLIP4IDC](https://github.com/sushizixin/CLIP4IDC) by Guo et al. I greatly appreciate their work, which provided a strong foundation for this project.
