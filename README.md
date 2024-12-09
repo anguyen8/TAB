@@ -29,10 +29,6 @@ Debugging in Vision-Language Models`
 
 
 
-
-## Disclaimer
-
-
 ## Requirements
 
 ```sh
