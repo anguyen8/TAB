@@ -322,10 +322,8 @@ class CLEVR_DataLoader(Dataset):
         bef_image = self._get_rawimage(bef_image_path)
         aft_image = self._get_rawimage(aft_image_path)
         no_image = self._get_rawimage(no_image_path)
-        sc_target = 1.0
-        nsc_target = 0.0
 
         image_mask = np.ones(2, dtype=np.long)
-        return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, no_image, sc_target, nsc_target, gt_left_map, gt_right_map, nsc_map, image_mask, \
+        return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, no_image, gt_left_map, gt_right_map, nsc_map, image_mask, \
                pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids, \
                no_pairs_input_caption_ids, no_pairs_decoder_mask, no_pairs_output_caption_ids, image_idx_name

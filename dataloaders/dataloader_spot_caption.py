@@ -158,6 +158,9 @@ class SPOT_DataLoader(Dataset):
         bef_image = self._get_rawimage(bef_image_path)
         aft_image = self._get_rawimage(aft_image_path)
         image_mask = np.ones(2, dtype=np.long)
-        return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, np.zeros((1, 197)), np.zeros((1, 197)), image_mask, \
+
+        gt_map = None
+
+        return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, gt_map, gt_map, image_mask, \
                pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids, image_idx_name
 

@@ -7,22 +7,22 @@ import torch
 import numpy as np
 import random
 import os
-import wandb
+from metrics import compute_metrics, tensor_text_to_video_metrics, tensor_video_to_text_sim
 import time
 import argparse
 from modules.tokenization_clip import SimpleTokenizer as ClipTokenizer
 from modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-from modules.modeling import CAB
+from modules.modeling import CLIP4IDC
 from modules.optimization import BertAdam
 
-from util import get_logger
+from util import parallel_apply, get_logger
 from dataloaders.data_dataloaders import DATALOADER_DICT
 
 torch.distributed.init_process_group(backend="nccl")
 
 global logger
 
-def get_args(description='CAB on Binary CD'):
+def get_args(description='TAB4IDC on Retrieval Task'):
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--do_pretrain", action='store_true', help="Whether to run training.")
     parser.add_argument("--do_train", action='store_true', help="Whether to run training.")
@@ -88,7 +88,6 @@ def get_args(description='CAB on Binary CD'):
                         help="linear projection of flattened patches.")
 
     parser.add_argument("--pretrained_clip_name", default="ViT-B/32", type=str, help="Choose a CLIP version")
-    parser.add_argument('--lambda', type=float, default=.1, help='coefficient for detection loss.')
 
     args = parser.parse_args()
 
@@ -157,7 +156,7 @@ def init_model(args, device, n_gpu, local_rank):
 
     # Prepare model
     cache_dir = args.cache_dir if args.cache_dir else os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed')
-    model = CAB.from_pretrained(cache_dir=cache_dir, state_dict=model_state_dict, task_config=args)
+    model = CLIP4IDC.from_pretrained(args.cross_model, args.decoder_model, cache_dir=cache_dir, state_dict=model_state_dict, task_config=args)
 
     model.to(device)
 
@@ -225,7 +224,11 @@ def save_model(epoch, args, model, optimizer, tr_loss, type_name=""):
     optimizer_state_file = os.path.join(
         args.output_dir, "pytorch_opt.bin.{}{}".format("" if type_name=="" else type_name+".", epoch))
     torch.save(model_to_save.state_dict(), output_model_file)
-
+    # torch.save({
+    #         'epoch': epoch,
+    #         'optimizer_state_dict': optimizer.state_dict(),
+    #         'loss': tr_loss,
+    #         }, optimizer_state_file)
     logger.info("Model saved to %s", output_model_file)
     logger.info("Optimizer saved to %s", optimizer_state_file)
     return output_model_file
@@ -239,7 +242,7 @@ def load_model(epoch, args, n_gpu, device, model_file=None):
             logger.info("Model loaded from %s", model_file)
         # Prepare model
         cache_dir = args.cache_dir if args.cache_dir else os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed')
-        model = CAB.from_pretrained(cache_dir=cache_dir, state_dict=model_state_dict, task_config=args)
+        model = CLIP4IDC.from_pretrained(args.cross_model, cache_dir=cache_dir, state_dict=model_state_dict, task_config=args)
 
         model.to(device)
     else:
@@ -260,8 +263,8 @@ def train_epoch(epoch, args, model, train_dataloader, device, n_gpu, optimizer, 
             # multi-gpu does scattering it-self
             batch = tuple(t.to(device=device, non_blocking=True) for t in batch)
 
-        input_ids, input_mask, segment_ids, bef_image, aft_image, image_mask, target = batch
-        loss = model(bef_image, aft_image, target, image_mask)
+        input_ids, input_mask, segment_ids, bef_image, aft_image, image_mask = batch
+        loss, decoder_loss, det_loss = model(input_ids, segment_ids, input_mask, bef_image, aft_image, image_mask=image_mask)
 
         if n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu.
@@ -295,33 +298,25 @@ def train_epoch(epoch, args, model, train_dataloader, device, n_gpu, optimizer, 
                             float(loss),
                             (time.time() - start_time) / (log_step * args.gradient_accumulation_steps))
                 start_time = time.time()
-        wandb.log({
-            "inputs": batch,
-            "epoch": epoch,
-            "step": step,
-            "accumulative_training_loss": total_loss,
-            "training_loss": loss})
 
     total_loss = total_loss / len(train_dataloader)
     return total_loss, global_step
 
-def _run_on_single_gpu(model, batch_list_v, batch_visual_output_list, labels):
-    each_row = []
-    each_loss = []
-    all_labels = []
-    for idx2, b2 in enumerate(batch_list_v):
-        pair_mask, *_tmp = b2
-        visual_output = batch_visual_output_list[idx2]
-        label = labels[idx2]
-        ans, _ = model.predict_similarity(visual_output, label)
-        loss = model.BCEloss(ans.float(), torch.Tensor(label).float().cuda())
-        each_row.append(ans.cpu().detach().numpy().flatten())
-        each_loss.append(loss.cpu().detach().numpy().flatten())
-        all_labels.append(label)
-    sim_matrix = np.concatenate(each_row, axis=-1)
-    each_loss = np.concatenate(each_loss, axis=-1)
-    all_labels = np.concatenate(all_labels, axis=-1)
-    return np.asarray(sim_matrix), np.asarray(each_loss), all_labels
+def _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_list, batch_visual_output_list):
+    sim_matrix = []
+    for idx1, b1 in enumerate(batch_list_t):
+        input_mask, segment_ids, *_tmp = b1
+        sequence_output = batch_sequence_output_list[idx1]
+        each_row = []
+        for idx2, b2 in enumerate(batch_list_v):
+            pair_mask, *_tmp = b2
+            visual_output = batch_visual_output_list[idx2]
+            b1b2_logits, *_tmp, _ = model.get_similarity_logits(sequence_output, visual_output, input_mask, pair_mask, torch.tensor([1.0]))
+            b1b2_logits = b1b2_logits.cpu().detach().numpy()
+            each_row.append(b1b2_logits)
+        each_row = np.concatenate(tuple(each_row), axis=-1)
+        sim_matrix.append(each_row)
+    return sim_matrix
 
 def eval_epoch(args, model, test_dataloader, device, n_gpu):
 
@@ -343,8 +338,13 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
             and test_dataloader.dataset.multi_sentence_per_pair:
         multi_sentence_ = True
         cut_off_points_ = test_dataloader.dataset.cut_off_points
+        sentence_num_ = test_dataloader.dataset.sentence_num
+        pair_num_ = test_dataloader.dataset.image_num
         cut_off_points_ = [itm - 1 for itm in cut_off_points_]
 
+    if multi_sentence_:
+        logger.warning("Eval under the multi-sentence per pair setting.")
+        logger.warning("sentence num: {}, pair num: {}".format(sentence_num_, pair_num_))
 
     model.eval()
     with torch.no_grad():
@@ -352,47 +352,110 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
         batch_list_v = []
         batch_sequence_output_list, batch_visual_output_list = [], []
         total_pair_num = 0
-        labels = []
+
         # ----------------------------
         # 1. cache the features
         # ----------------------------
         for bid, batch in enumerate(test_dataloader):
             batch = tuple(t.to(device) for t in batch)
-            input_ids, input_mask, segment_ids, bef_image, aft_image, image_mask, target = batch
-            
+            input_ids, input_mask, segment_ids, bef_image, aft_image, image_mask, target, gt_left_map, gt_right_map = batch
             image_pair = torch.cat([bef_image, aft_image], 1)
-            labels.append(target.data.to("cpu").numpy())
+
             if multi_sentence_:
                 # multi-sentences retrieval means: one pair has two or more descriptions.
                 b, *_t = image_pair.shape
-                b2, *_r = image_mask.shape
+                sequence_output, _ = model.get_sequence_output(input_ids, segment_ids, input_mask)
+                batch_sequence_output_list.append(sequence_output)
+                batch_list_t.append((input_mask, segment_ids,))
 
-                visual_output, _ = model.get_visual_output(image_pair, image_mask)
-                batch_visual_output_list.append(visual_output)
-                batch_list_v.append((image_mask,))
+                s_, e_ = total_pair_num, total_pair_num + b
+                filter_inds = [itm - s_ for itm in cut_off_points_ if itm >= s_ and itm < e_]
+
+                if len(filter_inds) > 0:
+                    image_pair, pair_mask = image_pair[filter_inds, ...], image_mask[filter_inds, ...]
+                    visual_output, _, _, _ = model.get_visual_output(image_pair, pair_mask, gt_left_map, gt_right_map)
+                    batch_visual_output_list.append(visual_output)
+                    batch_list_v.append((pair_mask,))
                 total_pair_num += b
 
             print("{}/{}\r".format(bid, len(test_dataloader)), end="")
 
+        # ----------------------------------
+        # 2. calculate the similarity
+        # ----------------------------------
+        if n_gpu > 1:
+            device_ids = list(range(n_gpu))
+            batch_list_t_splits = []
+            batch_list_v_splits = []
+            batch_t_output_splits = []
+            batch_v_output_splits = []
+            bacth_len = len(batch_list_t)
+            split_len = (bacth_len + n_gpu - 1) // n_gpu
+            for dev_id in device_ids:
+                s_, e_ = dev_id * split_len, (dev_id + 1) * split_len
+                if dev_id == 0:
+                    batch_list_t_splits.append(batch_list_t[s_:e_])
+                    batch_list_v_splits.append(batch_list_v)
 
-        sim_matrix, val_loss, all_val_labels = _run_on_single_gpu(model, batch_list_v, batch_visual_output_list, labels)
-        output = [1.0 if float(i) > 0.5 else 0.0 for i in sim_matrix]
-        accu = np.count_nonzero(all_val_labels - output)
-        val_accu = (len(output) - accu)/len(output)
+                    batch_t_output_splits.append(batch_sequence_output_list[s_:e_])
+                    batch_v_output_splits.append(batch_visual_output_list)
+                else:
+                    devc = torch.device('cuda:{}'.format(str(dev_id)))
+                    devc_batch_list = [tuple(t.to(devc) for t in b) for b in batch_list_t[s_:e_]]
+                    batch_list_t_splits.append(devc_batch_list)
+                    devc_batch_list = [tuple(t.to(devc) for t in b) for b in batch_list_v]
+                    batch_list_v_splits.append(devc_batch_list)
 
-    wandb.log({"validation_loss_mean": np.mean(val_loss),
-    "validation_loss_std":np.std(val_loss),
-    "validation_accuracy": val_accu})
-    logger.info("validation results stored on wandb")
+                    devc_batch_list = [b.to(devc) for b in batch_sequence_output_list[s_:e_]]
+                    batch_t_output_splits.append(devc_batch_list)
+                    devc_batch_list = [b.to(devc) for b in batch_visual_output_list]
+                    batch_v_output_splits.append(devc_batch_list)
 
-    return 0
+            parameters_tuple_list = [(batch_list_t_splits[dev_id], batch_list_v_splits[dev_id],
+                                      batch_t_output_splits[dev_id], batch_v_output_splits[dev_id]) for dev_id in device_ids]
+            parallel_outputs = parallel_apply(_run_on_single_gpu, model, parameters_tuple_list, device_ids)
+            sim_matrix = []
+            for idx in range(len(parallel_outputs)):
+                sim_matrix += parallel_outputs[idx]
+            sim_matrix = np.concatenate(tuple(sim_matrix), axis=0)
+        else:
+            sim_matrix = _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_list, batch_visual_output_list)
+            sim_matrix = np.concatenate(tuple(sim_matrix), axis=0)
+
+    if multi_sentence_:
+        logger.info("before reshape, sim matrix size: {} x {}".format(sim_matrix.shape[0], sim_matrix.shape[1]))
+        cut_off_points2len_ = [itm + 1 for itm in cut_off_points_]
+        max_length = max([e_-s_ for s_, e_ in zip([0]+cut_off_points2len_[:-1], cut_off_points2len_)])
+        sim_matrix_new = []
+        for s_, e_ in zip([0] + cut_off_points2len_[:-1], cut_off_points2len_):
+            sim_matrix_new.append(np.concatenate((sim_matrix[s_:e_],
+                                                  np.full((max_length-e_+s_, sim_matrix.shape[1]), -np.inf)), axis=0))
+
+        sim_matrix = np.stack(tuple(sim_matrix_new), axis=0)
+
+
+        logger.info("after reshape, sim matrix size: {} x {} x {}".
+                    format(sim_matrix.shape[0], sim_matrix.shape[1], sim_matrix.shape[2]))
+
+        tv_metrics = tensor_text_to_video_metrics(sim_matrix)
+        vt_metrics = compute_metrics(tensor_video_to_text_sim(sim_matrix))
+
+    logger.info("Text-to-Image-Pair:")
+    logger.info('\t>>>  R@1: {:.1f} - R@5: {:.1f} - R@10: {:.1f} - Median R: {:.1f} - Mean R: {:.1f}'.
+                format(tv_metrics['R1'], tv_metrics['R5'], tv_metrics['R10'], tv_metrics['MR'], tv_metrics['MeanR']))
+    logger.info("Image-Pair-to-Text:")
+    logger.info('\t>>>  V2T$R@1: {:.1f} - V2T$R@5: {:.1f} - V2T$R@10: {:.1f} - V2T$Median R: {:.1f} - V2T$Mean R: {:.1f}'.
+                format(vt_metrics['R1'], vt_metrics['R5'], vt_metrics['R10'], vt_metrics['MR'], vt_metrics['MeanR']))
+
+    R1 = tv_metrics['R1']
+    return R1
 
 def main():
     global logger
     args = get_args()
     args = set_seed_logger(args)
     device, n_gpu = init_device(args, args.local_rank)
-    n_gpu = 1
+
     tokenizer = ClipTokenizer()
 
     assert  args.task_type == "retrieval"
@@ -432,7 +495,7 @@ def main():
 
     test_dataloader, test_length = None, 0
     if DATALOADER_DICT[args.datatype]["test"] is not None:
-        test_dataloader, test_length = DATALOADER_DICT[args.datatype]["test"](args, tokenizer, subset="test")
+        test_dataloader, test_length = DATALOADER_DICT[args.datatype]["test"](args, tokenizer)
 
     if DATALOADER_DICT[args.datatype]["val"] is not None:
         val_dataloader, val_length = DATALOADER_DICT[args.datatype]["val"](args, tokenizer, subset="val")
@@ -455,18 +518,12 @@ def main():
     # train and eval
     ## ####################################
     if args.do_train:
-
-        wandb.init(project="CAB", dir=args.output_dir)
-        wandb.config = {"learning_rate": args.lr, "epochs": args.epochs, "batch_size": args.batch_size}
-
         train_dataloader, train_length, train_sampler = DATALOADER_DICT[args.datatype]["train"](args, tokenizer)
         num_train_optimization_steps = (int(len(train_dataloader) + args.gradient_accumulation_steps - 1)
                                         / args.gradient_accumulation_steps) * args.epochs
 
         coef_lr = args.coef_lr
         optimizer, scheduler, model = prep_optimizer(args, model, num_train_optimization_steps, device, n_gpu, args.local_rank, coef_lr=coef_lr)
-        
-        wandb.watch(model, log="all")
 
         if args.local_rank == 0:
             logger.info("***** Running training *****")
@@ -491,20 +548,24 @@ def main():
             train_sampler.set_epoch(epoch)
             tr_loss, global_step = train_epoch(epoch, args, model, train_dataloader, device, n_gpu, optimizer,
                                                scheduler, global_step, local_rank=args.local_rank)
-
             if args.local_rank == 0:
                 logger.info("Epoch %d/%s Finished, Train Loss: %f", epoch + 1, args.epochs, tr_loss)
 
                 output_model_file = save_model(epoch, args, model, optimizer, tr_loss, type_name="")
 
                 ## Run on val dataset, this process is *TIME-consuming*.
-                logger.info("Eval on val dataset")
-                eval_epoch(args, model, val_dataloader, device, n_gpu)
+                # logger.info("Eval on val dataset")
+                R1 = eval_epoch(args, model, val_dataloader, device, n_gpu)
+
+                # R1 = eval_epoch(args, model, test_dataloader, device, n_gpu)
+                if best_score <= R1:
+                    best_score = R1
+                    best_output_model_file = output_model_file
+                logger.info("The best model is: {}, the R1 is: {:.4f}".format(best_output_model_file, best_score))
 
     elif args.do_eval:
         if args.local_rank == 0:
             eval_epoch(args, model, test_dataloader, device, n_gpu)
-                
 
 if __name__ == "__main__":
     main()

@@ -200,8 +200,8 @@ class CLIP4IDC(CLIP4IDCPreTrainedModel):
 
         self.apply(self.init_weights)
 
-    def forward(self, input_ids, token_type_ids, attention_mask, bef_image, aft_image, left_gt_map, right_gt_map, image_mask=None,
-                input_caption_ids=None, decoder_mask=None, output_caption_ids=None):
+    def forward(self, input_ids, token_type_ids, attention_mask, bef_image, aft_image, left_gt_map=None, right_gt_map=None, image_mask=None,
+                input_caption_ids=None, decoder_mask=None, output_caption_ids=None, datatype='open'):
         input_ids = input_ids.view(-1, input_ids.shape[-1])
         token_type_ids = token_type_ids.view(-1, token_type_ids.shape[-1])
         attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
@@ -245,15 +245,17 @@ class CLIP4IDC(CLIP4IDCPreTrainedModel):
                 decoder_loss = self.decoder_loss_fct(decoder_scores.view(-1, self.decoder_config.vocab_size),
                                                      output_caption_ids.view(-1))
 
-                
-               left_heatmap, right_heatmap, gt_map_left, gt_map_right = self.prepare_tensors(left_heatmap[:, 0, :].squeeze(), right_heatmap[:, 0, :].squeeze(), left_gt_map[:, 0, :].squeeze(), right_gt_map[:, 0, :].squeeze())
-                
+                if args.datatype == "clevr" or args.datatype == "open":
+                    left_heatmap, right_heatmap, gt_map_left, gt_map_right = self.prepare_tensors(left_heatmap[:, 0, :].squeeze(), right_heatmap[:, 0, :].squeeze(), left_gt_map[:, 0, :].squeeze(), right_gt_map[:, 0, :].squeeze())
+                    
 
-                loc_loss = (1.0 - self.map_loss(right_heatmap, gt_map_left).mean())
-                loc_loss += (1.0 - self.map_loss(left_heatmap, gt_map_right).mean())
+                    loc_loss = (1.0 - self.map_loss(right_heatmap, gt_map_left).mean())
+                    loc_loss += (1.0 - self.map_loss(left_heatmap, gt_map_right).mean())
+                    
+                    loss += loc_loss
+
 
                 loss += decoder_loss
-                loss += loc_loss
 
             return loss, decoder_loss, loc_loss
         else:
