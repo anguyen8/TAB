@@ -20,6 +20,7 @@ def dataloader_clevr_train(args, tokenizer):
         subset="train",
         data_path=args.data_path,
         features_path=args.features_path,
+        patch_n=args.patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -47,6 +48,7 @@ def dataloader_clevr_test(args, tokenizer, subset="test"):
         subset=subset,
         data_path=args.data_path,
         features_path=args.features_path,
+        patch_n=args.patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -69,6 +71,7 @@ def dataloader_spot_train(args, tokenizer):
         subset="train",
         data_path=args.data_path,
         features_path=args.features_path,
+        patch_n=args.patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -96,6 +99,7 @@ def dataloader_spot_test(args, tokenizer, subset="test"):
         subset=subset,
         data_path=args.data_path,
         features_path=args.features_path,
+        patch_n=args.patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -118,6 +122,7 @@ def dataloader_open_train(args, tokenizer):
         subset="train",
         data_path=args.data_path,
         features_path=args.features_path,
+        patch_n=args.patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -155,6 +160,7 @@ def dataloader_open_test(args, tokenizer, subset="test"):
         subset=subset,
         data_path=args.data_path,
         features_path=args.features_path,
+        patch_n=args.patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
