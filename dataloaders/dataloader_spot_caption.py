@@ -9,12 +9,12 @@ import numpy as np
 import pickle
 import json
 import random
-from dataloaders.rawimage_util_clevr import RawImageExtractor
+from dataloaders.rawimage_util import RawImageExtractor
 from collections import defaultdict
 
 
-class CLEVR_DataLoader(Dataset):
-    """CLEVR dataset loader."""
+class SPOT_DataLoader(Dataset):
+    """SPOT dataset loader."""
     def __init__(
             self,
             subset,
@@ -26,53 +26,27 @@ class CLEVR_DataLoader(Dataset):
     ):
         self.data_path = data_path
         self.features_path = features_path
-        self.default_features_path = os.path.join(self.data_path, 'images')
-        self.nsc_features_path = os.path.join(self.data_path, 'nsc_images')
-        self.sc_features_path = os.path.join(self.data_path, 'sc_images')
         self.max_words = max_words
         self.tokenizer = tokenizer
 
         self.subset = subset
         assert self.subset in ["train", "val", "test"]
-        image_id_path = os.path.join(self.data_path, 'splits.json')
-        change_caption_file = os.path.join(self.data_path, "change_captions.json")
-        no_change_caption_file = os.path.join(self.data_path, "no_change_captions.json")
 
-        with open(image_id_path, 'r') as fp:
-            image_ids = json.load(fp)[subset]
+        change_caption_file = os.path.join(self.data_path, "reformat_%s.json" % self.subset)
 
         with open(change_caption_file, 'r') as fp:
             change_captions = json.load(fp)
 
-        with open(no_change_caption_file, 'r') as fp:
-            no_change_captions = json.load(fp)
-
-        image_dict = {}
-        image_files = os.listdir(self.default_features_path)
-        for image_file in image_files:
-            image_id_ = image_file.split(".")[0].split('_')[-1]
-            if int(image_id_) not in image_ids:
-                continue
-            # file_path_ = os.path.join(self.default_features_path, image_file)
-            image_dict[int(image_id_)] = image_id_
-        self.image_dict = image_dict
-
         self.sample_len = 0
         self.sentences_dict = {}
         self.cut_off_points = []
-        for image_id in image_ids:
-            image_id_name = "CLEVR_default_%s.png" % self.image_dict[image_id]
-            assert image_id_name in change_captions
-            for cap_txt in change_captions[image_id_name]:
-                self.sentences_dict[len(self.sentences_dict)] = (image_id, cap_txt)
-            self.cut_off_points.append(len(self.sentences_dict))
 
-        # self.nc_sentences_dict = defaultdict(list)
-        # for image_id in image_ids:
-        #     image_id_name = "CLEVR_default_%s.png" % self.image_dict[image_id]
-        #     assert image_id_name in no_change_captions
-        #     for cap_txt in no_change_captions[image_id_name]:
-        #         self.nc_sentences_dict[image_id].append(cap_txt)
+        for cap in change_captions:
+            image_id = cap["img_id"]
+            self.sentences_dict[len(self.sentences_dict)] = (image_id, cap["sentences"])
+            # for cap_txt in cap["sentences"]:
+            #     self.sentences_dict[len(self.sentences_dict)] = (image_id, cap_txt)
+            self.cut_off_points.append(len(self.sentences_dict))
 
         ## below variables are used to multi-sentences retrieval
         # self.cut_off_points: used to tag the label when calculate the metric
@@ -81,12 +55,12 @@ class CLEVR_DataLoader(Dataset):
         self.multi_sentence_per_pair = True    # !!! important tag for eval
         if self.subset == "val" or self.subset == "test":
             self.sentence_num = len(self.sentences_dict)
-            self.image_num = len(image_ids)
+            self.image_num = len(change_captions)
             assert len(self.cut_off_points) == self.image_num
             print("For {}, sentence number: {}".format(self.subset, self.sentence_num))
             print("For {}, image number: {}".format(self.subset, self.image_num))
 
-        print("Image number: {}".format(len(self.image_dict)))
+        print("Image number: {}".format(len(change_captions)))
         print("Total Paire: {}".format(len(self.sentences_dict)))
 
         self.sample_len = len(self.sentences_dict)
@@ -104,8 +78,12 @@ class CLEVR_DataLoader(Dataset):
         pairs_mask = np.zeros((k, self.max_words), dtype=np.long)
         pairs_segment = np.zeros((k, self.max_words), dtype=np.long)
 
+        pairs_input_caption_ids = np.zeros((k, self.max_words), dtype=np.long)
+        pairs_output_caption_ids = np.zeros((k, self.max_words), dtype=np.long)
+        pairs_decoder_mask = np.zeros((k, self.max_words), dtype=np.long)
+
         for i, image_id in enumerate(choice_image_ids):
-            words = self.tokenizer.tokenize(caption)
+            words = []
 
             words = [self.SPECIAL_TOKEN["CLS_TOKEN"]] + words
             total_length_with_CLS = self.max_words - 1
@@ -128,7 +106,31 @@ class CLEVR_DataLoader(Dataset):
             pairs_mask[i] = np.array(input_mask)
             pairs_segment[i] = np.array(segment_ids)
 
-        return pairs_text, pairs_mask, pairs_segment
+            # For generate captions
+            if caption is not None:
+                caption_words = self.tokenizer.tokenize(caption)
+            if len(caption_words) > total_length_with_CLS:
+                caption_words = caption_words[:total_length_with_CLS]
+            input_caption_words = [self.SPECIAL_TOKEN["CLS_TOKEN"]] + caption_words
+            output_caption_words = caption_words + [self.SPECIAL_TOKEN["SEP_TOKEN"]]
+
+            # For generate captions
+            input_caption_ids = self.tokenizer.convert_tokens_to_ids(input_caption_words)
+            output_caption_ids = self.tokenizer.convert_tokens_to_ids(output_caption_words)
+            decoder_mask = [1] * len(input_caption_ids)
+            while len(input_caption_ids) < self.max_words:
+                input_caption_ids.append(0)
+                output_caption_ids.append(0)
+                decoder_mask.append(0)
+            assert len(input_caption_ids) == self.max_words
+            assert len(output_caption_ids) == self.max_words
+            assert len(decoder_mask) == self.max_words
+
+            pairs_input_caption_ids[i] = np.array(input_caption_ids)
+            pairs_output_caption_ids[i] = np.array(output_caption_ids)
+            pairs_decoder_mask[i] = np.array(decoder_mask)
+
+        return pairs_text, pairs_mask, pairs_segment, pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids
 
     def _get_rawimage(self, image_path):
         choice_image_path = [image_path]
@@ -147,16 +149,15 @@ class CLEVR_DataLoader(Dataset):
 
     def __getitem__(self, idx):
         image_id, caption = self.sentences_dict[idx]
-        image_name = "CLEVR_default_%s.png" % self.image_dict[image_id]
-        bef_image_path = os.path.join(self.default_features_path, image_name)
-        aft_image_path = os.path.join(self.sc_features_path, image_name.replace('default', 'semantic'))
+        caption = random.choice(caption)
+        bef_image_path = os.path.join(self.features_path, "%s.png" % image_id)
+        aft_image_path = os.path.join(self.features_path, "%s_2.png" % image_id)
+        image_idx_name = "%s.png" % image_id
 
-        if self.subset == 'train':
-            if random.random() < 0.5:
-                bef_image_path = os.path.join(self.nsc_features_path, image_name.replace('default', 'nonsemantic'))
-
-        pairs_text, pairs_mask, pairs_segment = self._get_text(image_id, caption)
+        pairs_text, pairs_mask, pairs_segment, pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids = self._get_text(image_id, caption)
         bef_image = self._get_rawimage(bef_image_path)
         aft_image = self._get_rawimage(aft_image_path)
         image_mask = np.ones(2, dtype=np.long)
-        return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, image_mask
+        return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, np.zeros((1, 197)), np.zeros((1, 197)), image_mask, \
+               pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids, image_idx_name
+

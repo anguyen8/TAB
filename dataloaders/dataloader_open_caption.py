@@ -9,21 +9,21 @@ import numpy as np
 import pickle
 import json
 import random
-from dataloaders.rawimage_util_clevr import RawImageExtractor
+from dataloaders.rawimage_util import RawImageExtractor
 from collections import defaultdict
 import itertools
 from PIL import Image
 
 
-class CLEVR_DataLoader(Dataset):
-    """CLEVR dataset loader."""
+class OPEN_DataLoader(Dataset):
+    """OPEN-IMAGES-I dataset loader."""
     def __init__(
             self,
             subset,
             data_path,
             features_path,
             tokenizer,
-            patch_n=14,
+            patch_n = 14,
             max_words=30,
             feature_framerate=1.0,
             max_frames=100,
@@ -33,14 +33,14 @@ class CLEVR_DataLoader(Dataset):
     ):
         self.data_path = data_path
         self.features_path = features_path
-        self.default_features_path = os.path.join(self.data_path, 'images')
-        self.nsc_features_path = os.path.join(self.data_path, 'nsc_images')
-        self.sc_features_path = os.path.join(self.data_path, 'sc_images')
+        self.patch_N = patch_n
+        self.default_features_path = os.path.join(self.data_path, 'images_and_masks')
+        self.nsc_features_path = os.path.join(self.data_path, 'inpainted')
+        self.sc_features_path = os.path.join(self.data_path, 'inpainted')
         self.feature_framerate = feature_framerate
         self.max_words = max_words
         self.max_frames = max_frames
         self.tokenizer = tokenizer
-        self.patch_N = 
         # 0: ordinary order; 1: reverse order; 2: random order.
         self.frame_order = frame_order
         assert self.frame_order in [0, 1, 2]
@@ -50,51 +50,39 @@ class CLEVR_DataLoader(Dataset):
 
         self.subset = subset
         assert self.subset in ["train", "val", "test"]
-        image_id_path = os.path.join(self.data_path, 'splits.json')
-        change_caption_file = os.path.join(self.data_path, "change_captions.json")
-        no_change_caption_file = os.path.join(self.data_path, "no_change_captions.json")
 
-        with open(image_id_path, 'r') as fp:
-            image_ids = json.load(fp)[subset]
-            
-        with open(change_caption_file, 'r') as fp:
-            change_captions = json.load(fp)
+        metadata_path = os.path.join(self.data_path, 'metadata.json')
+        with open(metadata_path, 'r') as fp:
+            self.annotations = json.load(fp)
 
-        with open(no_change_caption_file, 'r') as fp:
-            no_change_captions = json.load(fp)
+        image_ids = self.create_splits(self.annotations)
 
-        self.no_change_captions = no_change_captions
-
-        with open("/home/pooyan/clevr_data/change_captions_with_bbox.json", 'r') as fp:
-            self.bboxes = json.load(fp)
-
-        image_dict = {}
-        image_files = os.listdir(self.default_features_path)
-        for image_file in image_files:
-            image_id_ = image_file.split(".")[0].split('_')[-1]
-            if int(image_id_) not in image_ids:
-                continue
-            # file_path_ = os.path.join(self.default_features_path, image_file)
-            image_dict[int(image_id_)] = image_id_
-        self.image_dict = image_dict
+        image_ids = image_ids[self.subset]
 
         self.sample_len = 0
         self.sentences_dict = {}
         self.cut_off_points = []
+
+        add_template = ['the <c> has appeared', 'the <c> has been newly placed', 'the <c> has been added']
+        drop_template = ['the <c> has disappeared', 'the <c> is missing', 'the <c> is gone', 'the <c> is no longer there']
+        
+        self.no_change_captions = ['no change was made', 'there is no change', 'the two scenes seem identical', 'the scene is the same as before', 'the scene remains the same', 'nothing has changed', 'nothing was modified', 'no change has occurred', 'there is no difference']
+
+        with open(os.path.join(self.data_path, self.subset + "_type_mapping.json"), "r") as gp:
+            type_mapping = json.load(gp)
+
         for image_id in image_ids:
-            image_id_name = "CLEVR_default_%s.png" % self.image_dict[image_id]
-            assert image_id_name in change_captions
-            self.sentences_dict[len(self.sentences_dict)] = (image_id, change_captions[image_id_name])
-            # for cap_txt in change_captions[image_id_name]:
-            #     self.sentences_dict[len(self.sentences_dict)] = (image_id, cap_txt)
+            
+            change_type = type_mapping[image_id]
+
+            if change_type == 'add':
+                change_captions = add_template
+            else:
+                change_captions = drop_template
+
+            self.sentences_dict[len(self.sentences_dict)] = (image_id, change_type, change_captions)
             self.cut_off_points.append(len(self.sentences_dict))
 
-        # self.nc_sentences_dict = defaultdict(list)
-        # for image_id in image_ids:
-        #     image_id_name = "CLEVR_default_%s.png" % self.image_dict[image_id]
-        #     assert image_id_name in no_change_captions
-        #     for cap_txt in no_change_captions[image_id_name]:
-        #         self.nc_sentences_dict[image_id].append(cap_txt)
 
         ## below variables are used to multi-sentences retrieval
         # self.cut_off_points: used to tag the label when calculate the metric
@@ -108,7 +96,7 @@ class CLEVR_DataLoader(Dataset):
             print("For {}, sentence number: {}".format(self.subset, self.sentence_num))
             print("For {}, image number: {}".format(self.subset, self.image_num))
 
-        print("Image number: {}".format(len(self.image_dict)))
+        print("Image number: {}".format(len(image_ids)))
         print("Total Paire: {}".format(len(self.sentences_dict)))
 
         self.sample_len = len(self.sentences_dict)
@@ -195,127 +183,147 @@ class CLEVR_DataLoader(Dataset):
 
         return image
 
-    def create_anno_from_bbox(self, bbox, img_size):
-        x1, y1, w, h = bbox
-        x2 = x1 + w
-        y2 = y1 + h
+    def create_splits(self, metadata):
 
-        if x1 < 0:
-            x1 = 0
-        if y1 < 0:
-            y1 = 0
+        imgs_ids_list = list(metadata.keys())
 
-        if x1 >= 480:
-            x1 = 470
-        if y1 >= 320:
-            y1 = 310
+        if not os.path.exists(os.path.join(self.data_path, 'splits.json')):
+            random.shuffle(imgs_ids_list) 
 
-        if x2 > 480:
-            x2 = 480
-        if y2 > 320:
-            y2 = 320
+            ids = dict()
 
-        anno = np.zeros(img_size)
-        anno[y1:y2, x1:x2] = 1.0
+            ids['train'] = list(imgs_ids_list[:-20000])
+            ids['val'] = list(imgs_ids_list[-20000: -15000])
+            ids['test'] = list(imgs_ids_list[-15000:])
+
+            with open(os.path.join(self.data_path, 'splits.json'), 'w') as fp:
+                json.dump(ids, fp)
+                fp.flush()
+                os.fsync(fp.fileno())
+
+        else:
+            with open(os.path.join(self.data_path, 'splits.json'), 'r') as fp:
+                ids = json.load(fp)
+
+        return ids
+    
+    def create_anno(self, bbox, n_patch, im_size):
+
+        x, y = im_size[0], im_size[1]
+
+        anno = np.zeros((x, y))
+        anno[bbox[0]:bbox[2], bbox[1]:bbox[3]] = 1.0
+        
+
         mask = np.array(Image.fromarray(anno).convert('L').resize((224, 224)))
         bbox_xy = np.nonzero(mask)
-        return mask, bbox_xy
+
+        gt_patch = np.reshape(np.zeros((1, n_patch * n_patch)), (n_patch, n_patch))
+
+        patch_size = 224/n_patch
+
+        y1 = min(bbox_xy[1])
+        y2 = max(bbox_xy[1])
+        x1 = min(bbox_xy[0])
+        x2 = max(bbox_xy[0])
+        start_x = int(x1 / patch_size)
+        start_y = int(y1 / patch_size)
+        end_x = int(x2 / patch_size)
+        end_y = int(y2 / patch_size)
+        xs = np.arange(start_x, end_x+1)
+        ys = np.arange(start_y, end_y+1)
+        unique_com = list(itertools.product(xs, ys))
+        interArea = []
+        for (x, y) in unique_com:
+            s_x = x * patch_size
+            e_x = (x + 1) * patch_size
+            s_y = y * patch_size
+            e_y = (y + 1) * patch_size
+            xA = max(x1, s_x)
+            yA = max(y1, s_y)
+            xB = min(x2, e_x)
+            yB = min(y2, e_y)
+            interArea.append(abs(max((xB - xA, 0)) * max((yB - yA), 0)))
+
+        max_intesected_index = np.argmax(interArea)
+        x, y = unique_com[max_intesected_index]
+        gt_patch[x, y] = 1.
+        
+        gt_map = np.zeros((1, n_patch * n_patch + 1))
+        gt_map[0, 1:] = np.reshape(gt_patch.T, (1, n_patch * n_patch))
+
+        return gt_map
     
+
+    def get_box(self, bbox, im_size):
+        
+        x, y = im_size[0], im_size[1]
+
+        anno = np.zeros((x, y))
+        anno[bbox[0]:bbox[2], bbox[1]:bbox[3]] = 1.0
+        
+
+        mask = np.array(Image.fromarray(anno).convert('L').resize((224, 224)))
+        bbox_xy = np.nonzero(mask)
+
+        y1 = min(bbox_xy[1])
+        y2 = max(bbox_xy[1])
+        x1 = min(bbox_xy[0])
+        x2 = max(bbox_xy[0])
+
+        return [x1, x2, y1, y2]
+    
+
     def __getitem__(self, idx):
-        image_id, caption = self.sentences_dict[idx]
+        image_id, change_type, caption = self.sentences_dict[idx]
         caption = random.choice(caption)
-        image_name = "CLEVR_default_%s.png" % self.image_dict[image_id]
-        image_idx_name = "%s.png" % self.image_dict[image_id]
+        caption = caption.replace('<c>', self.annotations[image_id]['label'].lower())
 
-        b_before = self.bboxes[str(int(self.image_dict[image_id]))]["bbox_before"]
-        b_after = self.bboxes[str(int(self.image_dict[image_id]))]["bbox_after"]
-
-
-        left_gt_patch = np.reshape(np.zeros((1, self.patch_N * self.patch_N)), (self.patch_N, self.patch_N))
-        right_gt_patch = np.reshape(np.zeros((1, self.patch_N * self.patch_N)), (self.patch_N, self.patch_N))
-
-        patch_size = int(224/self.patch_N)
-
-        if b_before:
-            _, bbox_bef = self.create_anno_from_bbox(b_before, (320, 480))
-            y1 = min(bbox_bef[1])
-            y2 = max(bbox_bef[1])
-            x1 = min(bbox_bef[0])
-            x2 = max(bbox_bef[0])
-            start_x = int(x1 / patch_size)
-            start_y = int(y1 / patch_size)
-            end_x = int(x2 / patch_size)
-            end_y = int(y2 / patch_size)
-            xs = np.arange(start_x, end_x+1)
-            ys = np.arange(start_y, end_y+1)
-            unique_com = list(itertools.product(xs, ys))
-            interArea = []
-            for (x, y) in unique_com:
-                s_x = x * patch_size
-                e_x = (x + 1) * patch_size
-                s_y = y * patch_size
-                e_y = (y + 1) * patch_size
-                xA = max(x1, s_x)
-                yA = max(y1, s_y)
-                xB = min(x2, e_x)
-                yB = min(y2, e_y)
-                interArea.append(abs(max((xB - xA, 0)) * max((yB - yA), 0)))
-
-            max_intesected_index = np.argmax(interArea)
-            x, y = unique_com[max_intesected_index]
-            left_gt_patch[x, y] = 1.
-            gt_left_map = np.zeros((1, self.patch_N * self.patch_N + 1))
-            gt_left_map[0, 1:] = np.reshape(left_gt_patch, (1, self.patch_N * self.patch_N ))
+        if change_type == 'drop':
+            if random.random() < 0.5:
+                bef_image_path = self.annotations[image_id]['path_bef']
+                b_before = self.annotations[image_id]['bbox_original']
+                bef_size = self.annotations[image_id]['original_size'] 
+                aft_image_path = self.annotations[image_id]['crop_path_aft']
+                b_after = self.annotations[image_id]['bbox_crop_aft']
+                aft_size = self.annotations[image_id]['crop_aft_size']
+            else:
+                bef_image_path = self.annotations[image_id]['crop_path_bef']
+                b_before = self.annotations[image_id]['bbox_crop_bef']
+                bef_size = self.annotations[image_id]['crop_bef_size'] 
+                aft_image_path = self.annotations[image_id]['path_aft']
+                b_after = self.annotations[image_id]['bbox_original']  
+                aft_size = self.annotations[image_id]['original_size']  
+                
         else:
-            gt_left_map = np.zeros((1, self.patch_N * self.patch_N  + 1))
-            gt_left_map[0, 0] = 1.0
+            if random.random() < 0.5:
+                bef_image_path = self.annotations[image_id]['path_aft']
+                b_before = self.annotations[image_id]['bbox_original']
+                bef_size = self.annotations[image_id]['original_size']
+                aft_image_path = self.annotations[image_id]['crop_path_bef']
+                b_after = self.annotations[image_id]['bbox_crop_bef']
+                aft_size = self.annotations[image_id]['crop_bef_size'] 
+            else:
+                bef_image_path = self.annotations[image_id]['crop_path_aft']
+                b_before = self.annotations[image_id]['bbox_crop_aft']
+                bef_size = self.annotations[image_id]['crop_aft_size']
+                aft_image_path = self.annotations[image_id]['path_bef']
+                b_after = self.annotations[image_id]['bbox_original']
+                aft_size = self.annotations[image_id]['original_size'] 
 
-        if b_after:
-            _, bbox_aft = self.create_anno_from_bbox(b_after, (320, 480))
-            y1 = min(bbox_aft[1])
-            y2 = max(bbox_aft[1])
-            x1 = min(bbox_aft[0])
-            x2 = max(bbox_aft[0])
-            start_x = int(x1 / patch_size)
-            start_y = int(y1 / patch_size)
-            end_x = int(x2 / patch_size)
-            end_y = int(y2 / patch_size)
-            xs = np.arange(start_x, end_x+1)
-            ys = np.arange(start_y, end_y+1)
-            unique_com = list(itertools.product(xs, ys))
-            interArea = []
-            for (x, y) in unique_com:
-                s_x = x * patch_size
-                e_x = (x + 1) * patch_size
-                s_y = y * patch_size
-                e_y = (y + 1) * patch_size
-                xA = max(x1, s_x)
-                yA = max(y1, s_y)
-                xB = min(x2, e_x)
-                yB = min(y2, e_y)
-                interArea.append(abs  (max((xB - xA, 0)) * max((yB - yA), 0)))
+        no_image_path = bef_image_path
 
-            max_intesected_index = np.argmax(interArea)
-            x, y = unique_com[max_intesected_index]
-            right_gt_patch[x, y] = 1.
-            gt_right_map = np.zeros((1, self.patch_N * self.patch_N  + 1))
-            gt_right_map[0, 1:] = np.reshape(right_gt_patch, (1, self.patch_N * self.patch_N ))
-        else:
-            gt_right_map = np.zeros((1, self.patch_N * self.patch_N  + 1))
-            gt_right_map[0, 0] = 1.0
+        gt_left_map = self.create_anno(b_before, self.patch_N, bef_size)
+        gt_right_map = self.create_anno(b_after, self.patch_N, aft_size)
 
+        left_box, right_box = self.get_box(b_before, bef_size), self.get_box(b_after, aft_size)
 
-        bef_image_path = os.path.join(self.default_features_path, image_name)
-        aft_image_path = os.path.join(self.sc_features_path, image_name.replace('default', 'semantic'))
-        no_image_path = os.path.join(self.nsc_features_path, image_name.replace('default', 'nonsemantic'))
-
-        nsc_map = np.zeros((1, self.patch_N * self.patch_N  + 1))
+        nsc_map = np.zeros((1, self.patch_N * self.patch_N + 1))
         nsc_map[0, 0] = 1.0
 
         pairs_text, pairs_mask, pairs_segment, pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids = self._get_text(image_id, caption)
 
-        no_caption = self.no_change_captions[image_name]
-        no_caption = random.choice(no_caption)
+        no_caption = random.choice(self.no_change_captions)
 
         _, _, _, no_pairs_input_caption_ids, no_pairs_decoder_mask, no_pairs_output_caption_ids = self._get_text(image_id, no_caption)
 
@@ -328,4 +336,4 @@ class CLEVR_DataLoader(Dataset):
         image_mask = np.ones(2, dtype=np.long)
         return pairs_text, pairs_mask, pairs_segment, bef_image, aft_image, no_image, sc_target, nsc_target, gt_left_map, gt_right_map, nsc_map, image_mask, \
                pairs_input_caption_ids, pairs_decoder_mask, pairs_output_caption_ids, \
-               no_pairs_input_caption_ids, no_pairs_decoder_mask, no_pairs_output_caption_ids, image_idx_name
+               no_pairs_input_caption_ids, no_pairs_decoder_mask, no_pairs_output_caption_ids, image_id, left_box, right_box, bef_image_path, aft_image_path, no_image_path
