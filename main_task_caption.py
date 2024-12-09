@@ -670,6 +670,12 @@ def main():
                 print(name)
                 param.requires_grad = False
 
+    #### ======== ViT resolution ==========
+    if args.pretrained_clip_name == "ViT-B/32":
+        patch_num = 7
+    else:
+        patch_num = 14
+
     ## ####################################
     # dataloader loading
     ## ####################################
@@ -680,10 +686,10 @@ def main():
 
     test_dataloader, test_length = None, 0
     if DATALOADER_DICT[args.datatype]["test"] is not None:
-        test_dataloader, test_length = DATALOADER_DICT[args.datatype]["test"](args, tokenizer)
+        test_dataloader, test_length = DATALOADER_DICT[args.datatype]["test"](args, tokenizer, patch_num)
 
     if DATALOADER_DICT[args.datatype]["val"] is not None:
-        val_dataloader, val_length = DATALOADER_DICT[args.datatype]["val"](args, tokenizer, subset="val")
+        val_dataloader, val_length = DATALOADER_DICT[args.datatype]["val"](args, tokenizer, patch_num, subset="val")
     else:
         val_dataloader, val_length = test_dataloader, test_length
 
@@ -703,7 +709,7 @@ def main():
     # train and eval
     ## ####################################
     if args.do_train:
-        train_dataloader, train_length, train_sampler = DATALOADER_DICT[args.datatype]["train"](args, tokenizer)
+        train_dataloader, train_length, train_sampler = DATALOADER_DICT[args.datatype]["train"](args, tokenizer, patch_num)
         num_train_optimization_steps = (int(len(train_dataloader) + args.gradient_accumulation_steps - 1)
                                         / args.gradient_accumulation_steps) * args.epochs
 

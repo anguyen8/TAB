@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 
-def dataloader_clevr_train(args, tokenizer):
+def dataloader_clevr_train(args, tokenizer, patch_num):
     if args.task_type == "retrieval":
         DataSet_DataLoader = CLEVR_DataLoader
     else:
@@ -20,7 +20,7 @@ def dataloader_clevr_train(args, tokenizer):
         subset="train",
         data_path=args.data_path,
         features_path=args.features_path,
-        patch_n=args.patch_num,
+        patch_n=patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -38,7 +38,7 @@ def dataloader_clevr_train(args, tokenizer):
 
     return dataloader, len(clevr_dataset), train_sampler
 
-def dataloader_clevr_test(args, tokenizer, subset="test"):
+def dataloader_clevr_test(args, tokenizer, patch_num, subset="test"):
     if args.task_type == "retrieval":
         DataSet_DataLoader = CLEVR_DataLoader
     else:
@@ -48,7 +48,7 @@ def dataloader_clevr_test(args, tokenizer, subset="test"):
         subset=subset,
         data_path=args.data_path,
         features_path=args.features_path,
-        patch_n=args.patch_num,
+        patch_n=patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -61,7 +61,7 @@ def dataloader_clevr_test(args, tokenizer, subset="test"):
     )
     return dataloader_clevr, len(clevr_testset)
 
-def dataloader_spot_train(args, tokenizer):
+def dataloader_spot_train(args, tokenizer, patch_num):
     if args.task_type == "retrieval":
         DataSet_DataLoader = SPOT_DataLoader
     else:
@@ -71,7 +71,7 @@ def dataloader_spot_train(args, tokenizer):
         subset="train",
         data_path=args.data_path,
         features_path=args.features_path,
-        patch_n=args.patch_num,
+        patch_n=patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -89,7 +89,7 @@ def dataloader_spot_train(args, tokenizer):
 
     return dataloader, len(spot_dataset), train_sampler
 
-def dataloader_spot_test(args, tokenizer, subset="test"):
+def dataloader_spot_test(args, tokenizer, patch_num, subset="test"):
     if args.task_type == "retrieval":
         DataSet_DataLoader = SPOT_DataLoader
     else:
@@ -99,7 +99,7 @@ def dataloader_spot_test(args, tokenizer, subset="test"):
         subset=subset,
         data_path=args.data_path,
         features_path=args.features_path,
-        patch_n=args.patch_num,
+        patch_n=patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -112,7 +112,7 @@ def dataloader_spot_test(args, tokenizer, subset="test"):
     )
     return dataloader_spot, len(spot_testset)
 
-def dataloader_open_train(args, tokenizer):
+def dataloader_open_train(args, tokenizer, patch_num):
     if args.task_type == "retrieval":
         DataSet_DataLoader = OPEN_DataLoader
     else:
@@ -122,7 +122,7 @@ def dataloader_open_train(args, tokenizer):
         subset="train",
         data_path=args.data_path,
         features_path=args.features_path,
-        patch_n=args.patch_num,
+        patch_n=patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
@@ -140,7 +140,7 @@ def dataloader_open_train(args, tokenizer):
 
     return dataloader, len(clevr_dataset), train_sampler
 
-def dataloader_open_test(args, tokenizer, subset="test"):
+def dataloader_open_test(args, tokenizer, patch_num, subset="test"):
     if args.task_type == "retrieval":
         DataSet_DataLoader = OPEN_DataLoader
     else:
@@ -160,7 +160,7 @@ def dataloader_open_test(args, tokenizer, subset="test"):
         subset=subset,
         data_path=args.data_path,
         features_path=args.features_path,
-        patch_n=args.patch_num,
+        patch_n=patch_num,
         max_words=args.max_words,
         tokenizer=tokenizer,
     )
