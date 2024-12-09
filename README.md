@@ -68,7 +68,16 @@ your_data_path
 
 **For STD**
 
-The image pairs and captions are accessible via [GitHub Repo] (https://github.com/harsh19/spot-the-diff) privided by [Learning to Describe Differences Between Pairs of Similar Images (EMNLP 2018)](https://arxiv.org/pdf/1808.10584.pdf)
+The image pairs and captions are accessible via [this instruction] (https://github.com/harsh19/spot-the-diff/blob/master/data/get_images.txt) privided by [Learning to Describe Differences Between Pairs of Similar Images (EMNLP 2018)](https://github.com/harsh19/spot-the-diff).
+
+You would get
+
+```
+your_data_path
+|–– std/
+|   |–– resized_images/
+|   |–– annotations/
+```
 
 
 Download CLIP (ViT-B/32 and ViT-B/16) weight,
