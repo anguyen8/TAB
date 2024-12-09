@@ -99,4 +99,4 @@ We provide the bash scripts needed to run the 2-stage training in the [scripts f
 
 ## Acknowledgment
 
-This repository borrows a significant part of its implementation from [CLIP4IDC](https://github.com/sushizixin/CLIP4IDC) by Guo et al. I greatly appreciate their work, which provided a strong foundation for this project.
+This repository borrows a significant part of its implementation from [CLIP4IDC](https://github.com/sushizixin/CLIP4IDC) by Guo et al. We greatly appreciate their work, which provided a strong foundation for this project.
