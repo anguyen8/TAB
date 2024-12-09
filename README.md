@@ -66,6 +66,11 @@ your_data_path
 |   |   |–– type_mapping.json
 ```
 
+**For STD**
+
+The image pairs and captions are accessible via [GitHub Repo] (https://github.com/harsh19/spot-the-diff) privided by [Learning to Describe Differences Between Pairs of Similar Images (EMNLP 2018)](https://arxiv.org/pdf/1808.10584.pdf)
+
+
 Download CLIP (ViT-B/32 and ViT-B/16) weight,
 ```sh
 wget -P ./modules https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt
