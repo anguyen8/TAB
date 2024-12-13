@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 
 from torch import Tensor
-from .linear import _LinearWithBias
+from torch.nn.modules.linear import _LinearWithBias
 from torch.nn.init import xavier_uniform_
 from torch.nn.init import constant_
 from torch.nn.init import xavier_normal_

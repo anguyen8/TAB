@@ -12,7 +12,7 @@ import time
 import argparse
 from modules.tokenization_clip import SimpleTokenizer as ClipTokenizer
 from modules.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-from modules.modeling import CLIP4IDC
+from modules.modeling import TAB4IDC
 from modules.optimization import BertAdam
 
 from util import parallel_apply, get_logger
@@ -156,7 +156,7 @@ def init_model(args, device, n_gpu, local_rank):
 
     # Prepare model
     cache_dir = args.cache_dir if args.cache_dir else os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed')
-    model = CLIP4IDC.from_pretrained(args.cross_model, args.decoder_model, cache_dir=cache_dir, state_dict=model_state_dict, task_config=args)
+    model = TAB4IDC.from_pretrained(args.cross_model, args.decoder_model, cache_dir=cache_dir, state_dict=model_state_dict, task_config=args)
 
     model.to(device)
 

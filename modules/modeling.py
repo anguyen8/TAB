@@ -18,12 +18,12 @@ from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 logger = logging.getLogger(__name__)
 allgather = AllGather.apply
 
-class CLIP4IDCPreTrainedModel(PreTrainedModel, nn.Module):
+class TAB4IDCPreTrainedModel(PreTrainedModel, nn.Module):
     """ An abstract class to handle weights initialization and
         a simple interface for dowloading and loading pretrained models.
     """
     def __init__(self, cross_config, decoder_config, *inputs, **kwargs):
-        super(CLIP4IDCPreTrainedModel, self).__init__(cross_config, decoder_config)
+        super(TAB4IDCPreTrainedModel, self).__init__(cross_config, decoder_config)
         self.cross_config = cross_config
         self.decoder_config = decoder_config
         self.clip = None
@@ -109,9 +109,9 @@ def update_attr(target_name, target_config, target_attr_name, source_config, sou
 def check_attr(target_name, task_config):
     return hasattr(task_config, target_name) and task_config.__dict__[target_name]
 
-class CLIP4IDC(CLIP4IDCPreTrainedModel):
+class TAB4IDC(TAB4IDCPreTrainedModel):
     def __init__(self, cross_config, decoder_config, clip_state_dict, task_config):
-        super(CLIP4IDC, self).__init__(cross_config, decoder_config)
+        super(TAB4IDC, self).__init__(cross_config, decoder_config)
         self.task_config = task_config
         self.ignore_video_index = -1
 
