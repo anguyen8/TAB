@@ -22,7 +22,7 @@ from torch.nn.init import xavier_normal_
 from torch.nn.parameter import Parameter
 
 from torch.nn.modules.module import Module
-from module_gated_attention import gated_coattention
+from .module_gated_attention import gated_coattention
 from torch import nn
 
 
