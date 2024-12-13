@@ -200,7 +200,7 @@ class TAB4IDC(TAB4IDCPreTrainedModel):
 
         self.apply(self.init_weights)
 
-    def forward(self, input_ids, token_type_ids, attention_mask, bef_image, aft_image, left_gt_map=None, right_gt_map=None, image_mask=None,
+    def forward(self, input_ids, token_type_ids, attention_mask, bef_image, aft_image, left_gt_map=torch.zeros(2, 2, 2), right_gt_map=torch.zeros(2, 2, 2), image_mask=None,
                 input_caption_ids=None, decoder_mask=None, output_caption_ids=None, datatype='open'):
         input_ids = input_ids.view(-1, input_ids.shape[-1])
         token_type_ids = token_type_ids.view(-1, token_type_ids.shape[-1])
