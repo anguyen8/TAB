@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, BCELoss
 
-from modules.until_module import PreTrainedModel, AllGather, CrossEn, GroupCEn
+from modules.until_module import PreTrainedModel, AllGather, CrossEn
 from modules.module_cross import CrossModel, CrossConfig
 from modules.module_decoder import DecoderModel, DecoderConfig
 
