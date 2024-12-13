@@ -227,7 +227,7 @@ class TAB4IDC(TAB4IDCPreTrainedModel):
             
 
             if self._stage_one is True and self._stage_two is False:
-                sim_matrix, *_tmp = self.get_similarity_logits(sequence_emb, visual_emb, attention_mask, image_mask, target,
+                sim_matrix, *_tmp = self.get_similarity_logits(sequence_emb, visual_emb, attention_mask, image_mask,
                                                         shaped=True)
 
                 sim_loss1 = self.loss_fct(sim_matrix)
@@ -373,14 +373,13 @@ class TAB4IDC(TAB4IDCPreTrainedModel):
 
         return text_out, video_out
 
-    def _loose_similarity(self, sequence_output, visual_output, attention_mask, visual_mask, target):
+    def _loose_similarity(self, sequence_output, visual_output, attention_mask, visual_mask):
         sequence_output, visual_output = sequence_output.contiguous(), visual_output.contiguous()
 
         if self.training:
             visual_output = allgather(visual_output, self.task_config)
             visual_mask = allgather(visual_mask, self.task_config)
             sequence_output = allgather(sequence_output, self.task_config)
-            target = allgather(target, self.task_config)
             torch.distributed.barrier()
 
         visual_output = visual_output.squeeze(1)
@@ -391,18 +390,18 @@ class TAB4IDC(TAB4IDCPreTrainedModel):
 
         logit_scale = self.clip.logit_scale.exp()
         retrieve_logits = logit_scale * torch.matmul(sequence_output, visual_output.t())
-        return retrieve_logits, target
+        return retrieve_logits
 
-    def get_similarity_logits(self, sequence_output, visual_output, attention_mask, visual_mask, target, shaped=False):
+    def get_similarity_logits(self, sequence_output, visual_output, attention_mask, visual_mask, shaped=False):
         if shaped is False:
             attention_mask = attention_mask.view(-1, attention_mask.shape[-1])
             visual_mask = visual_mask.view(-1, visual_mask.shape[-1])
 
         contrastive_direction = ()
 
-        retrieve_logits, target = self._loose_similarity(sequence_output, visual_output, attention_mask, visual_mask, target)
+        retrieve_logits, target = self._loose_similarity(sequence_output, visual_output, attention_mask, visual_mask)
 
-        return retrieve_logits, contrastive_direction, target
+        return retrieve_logits, contrastive_direction
 
     def decoder_caption(self, visual_output, visual_mask, input_caption_ids, decoder_mask,
                         shaped=False, get_logits=False):

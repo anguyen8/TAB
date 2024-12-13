@@ -225,9 +225,9 @@ class TABAttention(Module):
         if not self._qkv_same_embed_dim:
             return gated_coattention(
                 query, key, value, self.embed_dim, self.num_heads,
-                self.in_proj_weight, self.in_proj_bias,
+                self.in_proj_weight.half(), self.in_proj_bias.half(),
                 self.bias_k, self.bias_v, self.add_zero_attn,
-                self.dropout, self.out_proj.weight, self.out_proj.bias,
+                self.dropout, self.out_proj.weight.half(), self.out_proj.bias.half(),
                 training=self.training, gt_attention_map=gt_attention_map,
                 key_padding_mask=key_padding_mask, need_weights=need_weights,
                 attn_mask=attn_mask, use_separate_proj_weight=True,
@@ -236,9 +236,9 @@ class TABAttention(Module):
         else:
             return gated_coattention(
                 query, key, value, self.embed_dim, self.num_heads,
-                self.in_proj_weight, self.in_proj_bias,
+                self.in_proj_weight.half(), self.in_proj_bias.half(),
                 self.bias_k, self.bias_v, self.add_zero_attn,
-                self.dropout, self.out_proj.weight, self.out_proj.bias,
+                self.dropout, self.out_proj.weight.half(), self.out_proj.bias.half(),
                 training=self.training, gt_attention_map=gt_attention_map,
                 key_padding_mask=key_padding_mask, need_weights=need_weights,
                 attn_mask=attn_mask)
