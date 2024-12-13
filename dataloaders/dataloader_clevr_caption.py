@@ -40,7 +40,7 @@ class CLEVR_DataLoader(Dataset):
         self.max_words = max_words
         self.max_frames = max_frames
         self.tokenizer = tokenizer
-        self.patch_N = 
+        self.patch_N = patch_n
         # 0: ordinary order; 1: reverse order; 2: random order.
         self.frame_order = frame_order
         assert self.frame_order in [0, 1, 2]
