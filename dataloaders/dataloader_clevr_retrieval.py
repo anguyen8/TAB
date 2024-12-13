@@ -21,6 +21,7 @@ class CLEVR_DataLoader(Dataset):
             data_path,
             features_path,
             tokenizer,
+            patch_n=14,
             max_words=30,
             image_resolution=224,
     ):
