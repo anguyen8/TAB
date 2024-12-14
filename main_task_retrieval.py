@@ -311,7 +311,7 @@ def _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_
         for idx2, b2 in enumerate(batch_list_v):
             pair_mask, *_tmp = b2
             visual_output = batch_visual_output_list[idx2]
-            b1b2_logits, *_tmp, _ = model.get_similarity_logits(sequence_output, visual_output, input_mask, pair_mask, torch.tensor([1.0]))
+            b1b2_logits, *_tmp, _ = model.get_similarity_logits(sequence_output, visual_output, input_mask, pair_mask)
             b1b2_logits = b1b2_logits.cpu().detach().numpy()
             each_row.append(b1b2_logits)
         each_row = np.concatenate(tuple(each_row), axis=-1)
