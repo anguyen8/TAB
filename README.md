@@ -1,6 +1,21 @@
 # TAB: Transformer Attention Bottlenecks enable User Intervention and Debugging in Vision-Language Models
 
-
+<div align="center">    
+    <p style="font-size: 45px;"> by 
+        <a href="https://pooyanrg.me">Pooyan Rahmanzadehgervi</a><sup>1</sup>, 
+        <a>Hung Huy Nguyen</a><sup>1</sup>, 
+        <a href="https://rosanneliu.com/">Rosanne Liu</a><sup>2,3</sup>, 
+        <a href="https://mai-t-long.com/">Long Mai</a><sup>4</sup>, 
+        <a href="https://anhnguyen.me/research/">Anh Totti Nguyen</a><sup>1</sup>
+    </p>
+    <p>
+        <sup>1</sup>Auburn University, 
+        <sup>2</sup>Google DeepMind,
+        <sup>3</sup>ML Collective,
+        <sup>4</sup>Adobe Research
+    </p>
+    
+</div>
 
 
 This repository contains the official implementation of paper `TAB: Transformer Attention Bottlenecks enable User Intervention and
