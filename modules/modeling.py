@@ -245,7 +245,7 @@ class TAB4IDC(TAB4IDCPreTrainedModel):
                 decoder_loss = self.decoder_loss_fct(decoder_scores.view(-1, self.decoder_config.vocab_size),
                                                      output_caption_ids.view(-1))
 
-                if args.datatype == "clevr" or args.datatype == "open":
+                if datatype == "clevr" or datatype == "open":
                     left_heatmap, right_heatmap, gt_map_left, gt_map_right = self.prepare_tensors(left_heatmap[:, 0, :].squeeze(), right_heatmap[:, 0, :].squeeze(), left_gt_map[:, 0, :].squeeze(), right_gt_map[:, 0, :].squeeze())
                     
 
