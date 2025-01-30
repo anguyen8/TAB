@@ -147,4 +147,3 @@ dependencies:
       - tqdm==4.67.1
       - urllib3==1.26.20
       - wcwidth==0.2.13
-prefix: /home/pooyan/anaconda3/envs/myenv
