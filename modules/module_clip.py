@@ -278,7 +278,7 @@ class ResidualAttentionBlock(nn.Module):
             attn_mask_ = self.attn_mask(x.size(0))   # LND
 
         attn_mask_ = attn_mask_.to(dtype=x.dtype, device=x.device) if attn_mask_ is not None else None
-        return self.attn(x, x, x,torch.Tensor([1.0]), need_weights=False, attn_mask=attn_mask_)[0]
+        return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask_)[0]
 
     def forward(self, x_tuple:tuple):
         x, video_frame = x_tuple
