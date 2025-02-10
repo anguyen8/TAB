@@ -205,11 +205,6 @@ class CLEVR_DataLoader(Dataset):
         if y1 < 0:
             y1 = 0
 
-        if x1 >= 480:
-            x1 = 470
-        if y1 >= 320:
-            y1 = 310
-
         if x2 > 480:
             x2 = 480
         if y2 > 320:
