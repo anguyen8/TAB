@@ -81,6 +81,10 @@ your_data_path
 ```
 
 
+**For OpenImages-I**
+The test set is available [here](https://huggingface.co/datasets/XAI/OpenImages-Inpainted) provided by [Improving zero-shot object-level change detection by incorporating visual correspondence (WACV 2025)](https://arxiv.org/pdf/2501.05555)
+
+
 Download CLIP (ViT-B/32 and ViT-B/16) weight,
 ```sh
 wget -P ./modules https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt
