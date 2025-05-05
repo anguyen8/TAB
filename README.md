@@ -82,6 +82,7 @@ your_data_path
 
 
 **For OpenImages-I**
+
 The test set is available [here](https://huggingface.co/datasets/XAI/OpenImages-Inpainted) provided by [Improving zero-shot object-level change detection by incorporating visual correspondence (WACV 2025)](https://arxiv.org/pdf/2501.05555)
 
 
