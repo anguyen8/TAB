@@ -15,9 +15,9 @@
         <sup>4</sup>Adobe Research
     </p>
 
-    [![arXiv](https://img.shields.io/badge/arXiv-2505.23941-b31b1b.svg)](https://arxiv.org/abs/2412.18675)
-    [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Dataset-yellow.svg)](https://huggingface.co/papers/2412.18675)
-    [![Code License](https://img.shields.io/badge/Code_License-MIT-green.svg)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2505.23941-b31b1b.svg)](https://arxiv.org/abs/2412.18675)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Dataset-yellow.svg)](https://huggingface.co/papers/2412.18675)
+[![Code License](https://img.shields.io/badge/Code_License-MIT-green.svg)](LICENSE)
     
 </div>
 
@@ -27,7 +27,7 @@
 
 <p align="center">
   <!-- Insert key figure from your paper here -->
-  <img src="./combinedTeaser.pdf" alt="attention intervention in TAB overview" width="80%"/>
+  <img src="./Teaser.png" alt="attention intervention in TAB overview" width="80%"/>
 </p>
 
 *Multi-head self-attention (MHSA) is a key component of Transformers, a widely popular architecture in both language and vision.
