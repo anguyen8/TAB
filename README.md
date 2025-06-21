@@ -16,7 +16,6 @@
     </p>
 
 [![arXiv](https://img.shields.io/badge/arXiv-2505.23941-b31b1b.svg)](https://arxiv.org/abs/2412.18675)
-[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Paper-yellow.svg)](https://huggingface.co/papers/2412.18675)
 [![Code License](https://img.shields.io/badge/Code_License-MIT-green.svg)](LICENSE)
     
 </div>
